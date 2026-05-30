@@ -922,6 +922,31 @@ _CORPUS: list[GoldenCaseSpec] = [
         frozen_count=0,
         notes="empty messages array → handler should passthrough without compression",
     ),
+    # ── 19. No-compress passthrough with unsorted tools (D1 fix) ─────────────
+    # optimize=False → CompressionDecision.should_compress=False (no-compress path).
+    # Tools arrive in reverse-alphabetical order; legacy handler sorts them at
+    # the pre-send site (~line 1634) unconditionally, producing sorted outbound.
+    # Engine D1 fix applies the same sort + byte-faithful serialize.
+    GoldenCaseSpec(
+        name="anthropic_payg_no_optimize_unsorted_tools",
+        inbound_headers=_STANDARD_HEADERS,
+        body={
+            "model": "claude-sonnet-4-6",
+            "max_tokens": 64,
+            "messages": [{"role": "user", "content": "Use a tool"}],
+            "tools": [
+                {"name": "zeta_tool", "description": "z", "input_schema": {"type": "object"}},
+                {"name": "alpha_tool", "description": "a", "input_schema": {"type": "object"}},
+            ],
+        },
+        proxy_config={"optimize": False},
+        frozen_count=0,
+        notes=(
+            "D1 fix: no-compress path (optimize=False) with unsorted tools; "
+            "legacy handler sorts tools unconditionally at pre-send site; "
+            "engine must match — byte-exact after tool-sort"
+        ),
+    ),
 ]
 
 # Cases that are intentionally EXCLUDED from the byte-exact corpus and why:

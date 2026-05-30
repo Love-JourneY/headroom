@@ -410,9 +410,36 @@ class HeadroomEngine:
         )
 
         if not _decision.should_compress or _bypass:
-            # Passthrough — return original bytes byte-identical.
+            # No-compression path. The legacy handler ALWAYS sorts tools
+            # deterministically at the pre-send site (handler ~line 1634),
+            # unconditionally — there is no bypass guard around that call.
+            # Empirically confirmed: bypass + unsorted tools → sorted outbound.
+            # Engine must match: sort tools (if present), then byte-faithful
+            # serialize (passthrough when unchanged, canonical when mutated).
+            tools = body.get("tools")
+            if tools is not None:
+                from headroom.proxy.handlers.anthropic import AnthropicHandlerMixin
+
+                sorted_tools = AnthropicHandlerMixin._sort_tools_deterministically(tools)
+                if sorted_tools != tools:
+                    body_mutation_tracker.mark_mutated("tool_sort")
+                body["tools"] = sorted_tools
+
+            if not body_mutation_tracker.mutated:
+                try:
+                    parsed_original = json.loads(original_body_bytes)
+                    if parsed_original != body:
+                        body_mutation_tracker.mark_mutated("structural_diff_vs_original")
+                except (json.JSONDecodeError, ValueError):
+                    body_mutation_tracker.mark_mutated("original_unparseable")
+
+            outbound_bytes, _source = prepare_outbound_body_bytes(
+                body=body,
+                original_body_bytes=original_body_bytes,
+                body_mutated=body_mutation_tracker.mutated,
+            )
             return RequestDecision(
-                body=original_body_bytes,
+                body=outbound_bytes,
                 telemetry=ResponseTelemetry(compressed=False),
             )
 

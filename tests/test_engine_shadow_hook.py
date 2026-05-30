@@ -340,11 +340,13 @@ class TestFlagShadowZeroDivergence:
         assert resp.status_code == 200
         self._assert_shadow_match(proxy, bt, bd, be)
 
-    def test_shadow_unsorted_tools_detected_as_divergence(self) -> None:
-        """Unsorted tools trigger the divergence counter — the shadow correctly
-        surfaces the known gap between handler (always sorts) and engine
-        passthrough (byte-identical).  This test documents that the shadow
-        mechanism works, not that the gap is acceptable.
+    def test_shadow_unsorted_tools_match(self) -> None:
+        """Unsorted tools: shadow fires, no divergence (gap closed in D1 fix).
+
+        The legacy handler always sorts tools deterministically before forwarding
+        (handler ~line 1634, outside any bypass or should_compress gate).
+        After the D1 fix, the engine's no-compression path also applies the same
+        tool-sort + byte-faithful serialization, so both produce identical bytes.
         """
         body_unsorted = {
             "model": "claude-3-5-sonnet-20241022",
@@ -367,16 +369,11 @@ class TestFlagShadowZeroDivergence:
         proxy = client.app.state.proxy
         before_total = proxy.metrics.engine_shadow_total
         before_div = proxy.metrics.engine_shadow_divergence_total
+        before_err = proxy.metrics.engine_shadow_error_total
 
         resp = client.post("/v1/messages", json=body_unsorted, headers=_HEADERS)
         assert resp.status_code == 200, "shadow must not break the request"
-        # Shadow fires for every request
-        assert proxy.metrics.engine_shadow_total == before_total + 1
-        # Divergence detected: handler sorts tools, engine passthrough does not
-        assert proxy.metrics.engine_shadow_divergence_total == before_div + 1, (
-            "expected divergence for unsorted tools (known gap; engine passthrough "
-            "is byte-identical while handler always sorts — Chunk 4.4 will close this)"
-        )
+        self._assert_shadow_match(proxy, before_total, before_div, before_err)
 
 
 # ---------------------------------------------------------------------------
