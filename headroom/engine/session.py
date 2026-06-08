@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 
 
 def derive_session_key(
@@ -10,6 +11,11 @@ def derive_session_key(
     embedded adapter key CCR/session/drift state identically. The raw credential is
     hashed, never stored. A falsy ``conversation_scope`` (None or "") yields a
     tenant-scoped key (session == tenant)."""
-    tenant_principal = hashlib.sha256(salt + (credential or "").encode()).hexdigest()
+    tenant_principal = hashlib.pbkdf2_hmac(
+        "sha256",
+        (credential or "").encode(),
+        salt,
+        100_000,
+    ).hex()
     scope = conversation_scope or tenant_principal
-    return hashlib.sha256(f"{tenant_principal}:{scope}".encode()).hexdigest()
+    return hmac.new(salt, f"{tenant_principal}:{scope}".encode(), hashlib.sha256).hexdigest()
