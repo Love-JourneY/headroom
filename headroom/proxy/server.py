@@ -3639,6 +3639,11 @@ def run_server(
     else:
         app_target = create_app(config)
 
+    # Prevent blocking the asyncio event loop with synchronous network calls
+    # from huggingface_hub and litellm during request handling.
+    os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "true")
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
+
     uvicorn.run(
         app_target,
         host=config.host,
